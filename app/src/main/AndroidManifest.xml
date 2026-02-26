@@ -2,6 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Permisos necesarios para la aplicación -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -11,6 +17,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.BroadcastReceiverYTelefonía">
+        
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -18,10 +25,26 @@
             android:theme="@style/Theme.BroadcastReceiverYTelefonía">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        
+        <!-- BroadcastReceiver para detectar llamadas entrantes -->
+        <receiver
+            android:name=".PhoneCallReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.PHONE_STATE_CHANGED" />
+            </intent-filter>
+        </receiver>
+        
+        <!-- Servicio para enviar SMS automáticamente -->
+        <service
+            android:name=".SmsSenderService"
+            android:enabled="true"
+            android:exported="false" />
+            
     </application>
 
 </manifest>
