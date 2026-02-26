@@ -25,19 +25,32 @@ class PhoneCallReceiver : BroadcastReceiver() {
     private fun handleIncomingCall(context: Context, phoneNumber: String) {
         // Obtener el número configurado desde SharedPreferences
         val prefs = context.getSharedPreferences("AutoReplyPrefs", Context.MODE_PRIVATE)
-        val targetNumber = prefs.getString("target_number", "")
+        var targetNumber = prefs.getString("target_number", "")
         val autoReplyMessage = prefs.getString("auto_reply_message", "")
         
-        Log.d("PhoneCallReceiver", "Número objetivo: $targetNumber, Mensaje: $autoReplyMessage")
+        Log.d("PhoneCallReceiver", "Número entrante: $phoneNumber, Número objetivo: $targetNumber, Mensaje: $autoReplyMessage")
+        
+        // Normalizar números para comparación (quitar espacios, guiones, paréntesis)
+        val normalizedIncoming = normalizePhoneNumber(phoneNumber)
+        val normalizedTarget = normalizePhoneNumber(targetNumber ?: "")
+        
+        Log.d("PhoneCallReceiver", "Normalizado - Entrante: $normalizedIncoming, Objetivo: $normalizedTarget")
         
         // Verificar si el número entrante coincide con el configurado
-        if (phoneNumber == targetNumber && !autoReplyMessage.isNullOrEmpty()) {
+        if (normalizedIncoming == normalizedTarget && !autoReplyMessage.isNullOrEmpty()) {
             // Iniciar el servicio para enviar SMS
             val serviceIntent = Intent(context, SmsSenderService::class.java).apply {
                 putExtra("phone_number", phoneNumber)
                 putExtra("message", autoReplyMessage)
             }
             context.startService(serviceIntent)
+            Log.d("PhoneCallReceiver", "Servicio de SMS iniciado")
+        } else {
+            Log.d("PhoneCallReceiver", "No coincide el número o no hay mensaje")
         }
+    }
+    
+    private fun normalizePhoneNumber(number: String): String {
+        return number.replace("[^0-9+]".toRegex(), "")
     }
 }
