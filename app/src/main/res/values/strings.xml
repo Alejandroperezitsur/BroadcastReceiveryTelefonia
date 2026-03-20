@@ -1,3 +1,4 @@
 <resources>
-    <string name="app_name">BroadcastReceiver y Telefonía</string>
+    <string name="app_name">AutoResponder</string>
+    <string name="app_name_long">AutoResponder SMS</string>
 </resources>

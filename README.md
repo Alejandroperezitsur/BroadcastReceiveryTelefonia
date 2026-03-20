@@ -1,63 +1,130 @@
-# Aplicación Android - Respuesta Automática de SMS
+# AutoResponder - Respuesta Automática de SMS
 
-## Descripción
-Aplicación Android que permite responder de manera automática con un SMS cuando entra una llamada de un número específico configurado por el usuario.
+Aplicación Android moderna que permite responder de manera automática con un SMS cuando entra una llamada de un número específico configurado por el usuario.
 
-## Características
-- Detección automática de llamadas entrantes usando BroadcastReceiver
-- Configuración de número telefónico objetivo
-- Personalización del mensaje de respuesta automática
-- Almacenamiento persistente de la configuración
-- Interfaz de usuario intuitiva con Jetpack Compose
+## ✨ Características
 
-## Componentes Principales
+- 📞 **Detección automática** de llamadas entrantes usando BroadcastReceiver registrado en el manifiesto
+- ✉️ **Respuesta automática** con SMS personalizado
+- 🎯 **Configuración flexible** de número objetivo y mensaje
+- 🔛 **Activación/Desactivación** con un solo toque
+- 📊 **Historial de mensajes** enviados con fecha y hora
+- 🔔 **Notificaciones** de éxito/error en el envío
+- 🎨 **Diseño moderno** con Material Design 3
+- 🌙 **Soporte modo oscuro**
 
-### 1. PhoneCallReceiver.kt
-- BroadcastReceiver que escucha cambios en el estado telefónico
-- Detecta cuando entra una llamada (EXTRA_STATE_RINGING)
-- Compara el número entrante con el configurado
-- Inicia el servicio de envío de SMS si coincide
+## 📋 Requisitos Cumplidos
 
-### 2. SmsSenderService.kt
-- Servicio que envía SMS automáticamente
-- Utiliza SmsManager para el envío de mensajes
-- Maneja errores y muestra notificaciones
+✅ **BroadcastReceiver registrado en el manifiesto** - `PhoneCallReceiver` está declarado en `AndroidManifest.xml` con el filtro de intención `android.intent.action.PHONE_STATE`
 
-### 3. MainActivity.kt
-- Interfaz de usuario para configuración
-- Campos para número telefónico y mensaje
-- Almacenamiento usando SharedPreferences
+✅ **Permisos necesarios configurados**:
+- `READ_PHONE_STATE` - Detectar llamadas entrantes
+- `READ_CALL_LOG` - Leer número entrante (requerido en Android 10+)
+- `SEND_SMS` - Enviar mensajes de texto
+- `FOREGROUND_SERVICE` - Ejecutar servicio de envío
 
-## Permisos Requeridos
-- `READ_PHONE_STATE`: Para detectar llamadas entrantes
-- `SEND_SMS`: Para enviar mensajes de texto
-- `READ_CALL_LOG`: Para acceder al historial de llamadas
-- `READ_PHONE_NUMBERS`: Para leer números telefónicos
+✅ **Configuración desde aplicación**:
+- Número telefónico objetivo ingresado por el usuario
+- Mensaje de respuesta personalizable
+- Toggle para activar/desactivar la funcionalidad
 
-## Configuración en AndroidManifest.xml
-- BroadcastReceiver registrado para ACTION_PHONE_STATE_CHANGED
-- Servicio declarado para envío de SMS
-- Permisos necesarios configurados
+## 🏗️ Arquitectura
 
-## Uso
-1. Abrir la aplicación
-2. Ingresar el número telefónico que responderá automáticamente
-3. Escribir el mensaje de respuesta
-4. Guardar la configuración
-5. La aplicación responderá automáticamente cuando ese número llame
+### Componentes Principales
 
-## Arquitectura
+| Componente | Descripción |
+|------------|-------------|
+| `MainActivity.kt` | Interfaz de usuario con configuración, historial y controles |
+| `PhoneCallReceiver.kt` | BroadcastReceiver que detecta llamadas y verifica el número |
+| `SmsSenderService.kt` | Servicio en primer plano que envía el SMS |
+
+### Flujo de Datos
+
+```
+Llamada Entrante
+    ↓
+PhoneCallReceiver (BroadcastReceiver en Manifiesto)
+    ↓
+Verifica permisos y configuración
+    ↓
+Compara número entrante con configurado
+    ↓
+Inicia SmsSenderService (Foreground Service)
+    ↓
+Envía SMS automático
+    ↓
+Muestra notificación de confirmación
+```
+
+## 🚀 Uso
+
+1. **Abrir la aplicación** - Se mostrará la pantalla principal con el estado del sistema
+2. **Configurar número** - Ingrese el número telefónico que recibirá respuesta automática
+3. **Escribir mensaje** - Escriba el mensaje que se enviará automáticamente (máx. 160 caracteres)
+4. **Guardar** - Presione "Guardar Configuración"
+5. **Activar** - Use el botón ACTIVAR para habilitar la respuesta automática
+6. **Historial** - Revise el historial para ver mensajes enviados
+
+## 📱 Permisos Requeridos
+
+La aplicación requiere los siguientes permisos:
+
+| Permiso | Uso |
+|---------|-----|
+| `READ_PHONE_STATE` | Detectar el estado del teléfono y llamadas entrantes |
+| `READ_CALL_LOG` | Leer el número de teléfono entrante (requerido desde Android 10) |
+| `SEND_SMS` | Enviar mensajes de texto automáticamente |
+| `POST_NOTIFICATIONS` | Mostrar notificaciones (Android 13+) |
+| `FOREGROUND_SERVICE` | Mantener el servicio activo mientras envía SMS |
+
+> **Nota**: Todos los permisos se solicitan en tiempo de ejecución según las mejores prácticas de Android.
+
+## 🛠️ Tecnologías Utilizadas
+
 - **Lenguaje**: Kotlin
-- **UI**: Jetpack Compose
+- **UI**: Jetpack Compose con Material Design 3
 - **Arquitectura**: Componentes de Android nativos
 - **Almacenamiento**: SharedPreferences
+- **APIs**: TelephonyManager, SmsManager, BroadcastReceiver, Foreground Service
 
-## API Utilizadas
-- TelephonyManager.ACTION_PHONE_STATE_CHANGED
-- SmsManager para envío de SMS
-- BroadcastReceiver para detección de eventos
+## 📦 Estructura del Proyecto
 
-## Notas Importantes
-- La aplicación requiere permisos explícitos en Android 6.0+
-- El usuario debe conceder permisos de teléfono y SMS
-- Funciona en segundo plano gracias al BroadcastReceiver registrado en el manifiesto
+```
+app/src/main/java/com/example/broadcastreceiverytelefona/
+├── MainActivity.kt           # UI principal con Compose
+├── PhoneCallReceiver.kt      # BroadcastReceiver para llamadas
+├── SmsSenderService.kt       # Servicio de envío de SMS
+└── ui/theme/
+    ├── Color.kt              # Esquema de colores personalizado
+    ├── Theme.kt              # Tema Material 3
+    └── Type.kt               # Tipografías
+
+app/src/main/
+├── AndroidManifest.xml        # Configuración con BroadcastReceiver
+└── res/
+    ├── drawable/              # Iconos y gráficos
+    ├── mipmap-*/              # Iconos de la app
+    ├── values/
+    │   ├── strings.xml         # Textos de la aplicación
+    │   └── themes.xml          # Temas de la app
+    └── xml/                    # Reglas de backup
+```
+
+## ⚠️ Notas Importantes
+
+- **Android 10+ (API 29+)**: Se requiere el permiso `READ_CALL_LOG` adicional para leer el número entrante en el BroadcastReceiver debido a restricciones de privacidad.
+- **Servicio en Primer Plano**: El envío de SMS se realiza mediante un servicio en primer plano para garantizar que se complete incluso si la app está en segundo plano.
+- **Normalización de números**: La app compara los últimos 10 dígitos del número para manejar diferentes formatos (con o sin código de país).
+
+## 📝 Información del Desarrollador
+
+**Alejandro Pérez Vázquez**
+
+## 📄 Licencia
+
+Este proyecto es parte de una práctica académica de Desarrollo de Aplicaciones Móviles.
+
+---
+
+**Versión**: 1.0  
+**Fecha**: Marzo 2026

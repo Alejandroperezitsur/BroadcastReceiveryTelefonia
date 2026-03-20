@@ -2,11 +2,26 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!-- Declaración de características de hardware -->
+    <uses-feature
+        android:name="android.hardware.telephony"
+        android:required="false" />
+
     <!-- Permisos necesarios para la aplicación -->
+    <!-- Permiso para detectar estado del teléfono y llamadas entrantes -->
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
-    <uses-permission android:name="android.permission.SEND_SMS" />
+    <!-- Permiso necesario para leer número entrante en Android 10+ -->
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
-    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
+    <!-- Permiso para enviar SMS -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <!-- Permiso para escribir SMS (historial) -->
+    <uses-permission android:name="android.permission.WRITE_SMS" />
+    <!-- Permiso para notificaciones en Android 13+ -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Permiso para ejecutar servicio en primer plano -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!-- Permiso para servicio de tipo dataSync -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application
         android:allowBackup="true"
@@ -17,7 +32,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.BroadcastReceiverYTelefonía">
-        
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -28,23 +43,24 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        
-        <!-- BroadcastReceiver para detectar llamadas entrantes -->
+
+        <!-- BroadcastReceiver para detectar llamadas entrantes - REGISTRADO EN MANIFIESTO -->
         <receiver
             android:name=".PhoneCallReceiver"
             android:enabled="true"
-            android:exported="false">
+            android:exported="true">
             <intent-filter>
-                <action android:name="android.intent.action.PHONE_STATE_CHANGED" />
+                <action android:name="android.intent.action.PHONE_STATE" />
             </intent-filter>
         </receiver>
-        
+
         <!-- Servicio para enviar SMS automáticamente -->
         <service
             android:name=".SmsSenderService"
             android:enabled="true"
-            android:exported="false" />
-            
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
     </application>
 
 </manifest>
