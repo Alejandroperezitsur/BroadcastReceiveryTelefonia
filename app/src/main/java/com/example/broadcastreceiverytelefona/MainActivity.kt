@@ -2,7 +2,9 @@ package com.example.broadcastreceiverytelefona
 
 import android.Manifest
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -11,10 +13,13 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,6 +39,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -61,17 +67,19 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -89,11 +97,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -105,16 +116,14 @@ import com.example.broadcastreceiverytelefona.ui.theme.SuccessGreen
 import com.example.broadcastreceiverytelefona.ui.theme.WarningOrange
 import com.example.broadcastreceiverytelefona.ui.theme.GradientStart
 import com.example.broadcastreceiverytelefona.ui.theme.GradientEnd
-import com.example.broadcastreceiverytelefona.ui.theme.PremiumGold
-import com.example.broadcastreceiverytelefona.ui.theme.InfoBlue
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import android.content.Intent
-import android.os.Build
 import org.json.JSONArray
+
+// ══════════════════════════════════════════════════════════════
+// MainActivity
+// ══════════════════════════════════════════════════════════════
 
 class MainActivity : ComponentActivity() {
     private val requestPermissionLauncher = registerForActivityResult(
@@ -124,18 +133,10 @@ class MainActivity : ComponentActivity() {
             when {
                 isGranted -> { }
                 shouldShowRequestPermissionRationale(permission) -> {
-                    Toast.makeText(
-                        this,
-                        "El permiso $permission es necesario para el funcionamiento de la app",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    Toast.makeText(this, "El permiso $permission es necesario", Toast.LENGTH_LONG).show()
                 }
                 else -> {
-                    Toast.makeText(
-                        this,
-                        "Permiso $permission denegado permanentemente. Configure en ajustes del sistema.",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    Toast.makeText(this, "Permiso denegado. Configure en ajustes del sistema.", Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -144,176 +145,224 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-
         setContent {
             BroadcastReceiverYTelefoníaTheme {
-                AutoReplyApp(
-                    onRequestPermissions = { requestPermissions() }
-                )
+                AutoReplyApp(onRequestPermissions = { requestPermissions() })
             }
         }
     }
 
     private fun requestPermissions() {
-        val permissionsToRequest = mutableListOf<String>()
-
-        val requiredPermissions = listOf(
+        val perms = mutableListOf(
             Manifest.permission.READ_PHONE_STATE,
             Manifest.permission.READ_CALL_LOG,
             Manifest.permission.SEND_SMS,
             Manifest.permission.READ_CONTACTS
         )
-
-        requiredPermissions.forEach { permission ->
-            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
-                permissionsToRequest.add(permission)
-            }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            perms.add(Manifest.permission.POST_NOTIFICATIONS)
         }
-
-        if (permissionsToRequest.isNotEmpty()) {
-            requestPermissionLauncher.launch(permissionsToRequest.toTypedArray())
+        val toRequest = perms.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (toRequest.isNotEmpty()) {
+            requestPermissionLauncher.launch(toRequest.toTypedArray())
         }
     }
 }
 
-// --- Screens enum ---
-enum class Screen {
-    HOME, SETTINGS
-}
+// ══════════════════════════════════════════════════════════════
+// Navigation + Constants
+// ══════════════════════════════════════════════════════════════
 
-// --- Response Mode constants ---
-object ResponseMode {
+private enum class Screen { SPLASH, HOME, SETTINGS }
+
+private object ResponseMode {
     const val ALL = "ALL"
     const val CONTACTS_ONLY = "CONTACTS_ONLY"
     const val UNKNOWN_ONLY = "UNKNOWN_ONLY"
     const val SPECIFIC_NUMBERS = "SPECIFIC_NUMBERS"
 }
 
-// --- Main App Composable ---
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AutoReplyApp(onRequestPermissions: () -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    val snackbarHostState = remember { SnackbarHostState() }
-    var currentScreen by remember { mutableStateOf(Screen.HOME) }
+// SharedPreferences keys — MUST match PhoneCallReceiver/SmsSenderService
+private const val PREFS_NAME = "AutoReplyPrefs"
+private const val KEY_ENABLED = "auto_reply_enabled"
+private const val KEY_MESSAGE = "auto_reply_message"
+private const val KEY_RESPONSE_MODE = "response_mode"
+private const val KEY_TARGET_NUMBERS = "target_numbers"
+private const val KEY_REPLY_PRIVATE = "reply_to_private"
+private const val KEY_SENT_COUNT = "sent_messages_count"
+private const val KEY_HISTORY = "message_history"
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            "AutoResponder Pro",
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White
-                        )
-                        Text(
-                            if (currentScreen == Screen.HOME) "Intelligent Call Assistant"
-                            else "Configuración",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Color.White.copy(alpha = 0.7f)
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = GradientStart,
-                    titleContentColor = Color.White
-                ),
-                navigationIcon = {
-                    if (currentScreen == Screen.SETTINGS) {
-                        IconButton(onClick = { currentScreen = Screen.HOME }) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Volver",
-                                tint = Color.White
-                            )
-                        }
-                    }
-                },
-                actions = {
-                    if (currentScreen == Screen.HOME) {
-                        IconButton(onClick = { currentScreen = Screen.SETTINGS }) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "Ajustes",
-                                tint = Color.White
-                            )
-                        }
-                    }
-                }
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { innerPadding ->
-        when (currentScreen) {
-            Screen.HOME -> AutoReplyConfigScreen(
-                modifier = Modifier.padding(innerPadding),
-                context = context,
-                snackbarHostState = snackbarHostState,
-                scope = scope
-            )
-            Screen.SETTINGS -> SettingsScreen(
-                modifier = Modifier.padding(innerPadding),
-                context = context,
-                snackbarHostState = snackbarHostState,
-                scope = scope,
-                onRequestPermissions = onRequestPermissions
-            )
-        }
-    }
-}
+// ══════════════════════════════════════════════════════════════
+// Number list helpers (JSON array in SharedPreferences)
+// ══════════════════════════════════════════════════════════════
 
-// --- Helper functions for multi-number JSON list ---
-fun loadNumbersList(prefs: android.content.SharedPreferences): List<String> {
-    val json = prefs.getString("target_numbers", "[]") ?: "[]"
+private fun loadNumbers(prefs: android.content.SharedPreferences): List<String> {
+    val json = prefs.getString(KEY_TARGET_NUMBERS, "[]") ?: "[]"
     return try {
         val arr = JSONArray(json)
         (0 until arr.length()).map { arr.getString(it) }
-    } catch (e: Exception) {
-        // Migrate from old single number format
+    } catch (_: Exception) {
         val old = prefs.getString("target_number", "")
         if (!old.isNullOrBlank()) listOf(old) else emptyList()
     }
 }
 
-fun saveNumbersList(prefs: android.content.SharedPreferences, numbers: List<String>) {
+private fun saveNumbers(prefs: android.content.SharedPreferences, list: List<String>) {
     val arr = JSONArray()
-    numbers.forEach { arr.put(it) }
-    prefs.edit().putString("target_numbers", arr.toString()).apply()
+    list.forEach { arr.put(it) }
+    prefs.edit().putString(KEY_TARGET_NUMBERS, arr.toString()).apply()
 }
 
-// --- Main Config Screen ---
+private fun isValidPhone(number: String): Boolean {
+    if (number.isBlank()) return false
+    val cleaned = number.replace("[^0-9+]".toRegex(), "")
+    return cleaned.length in 8..15
+}
+
+// ══════════════════════════════════════════════════════════════
+// Root Composable
+// ══════════════════════════════════════════════════════════════
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AutoReplyConfigScreen(
-    modifier: Modifier = Modifier,
-    context: Context,
-    snackbarHostState: SnackbarHostState,
-    scope: CoroutineScope
-) {
-    val prefs = remember { context.getSharedPreferences("AutoReplyPrefs", Context.MODE_PRIVATE) }
+fun AutoReplyApp(onRequestPermissions: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val snackbar = remember { SnackbarHostState() }
+    var screen by remember { mutableStateOf(Screen.SPLASH) }
 
-    var message by remember { mutableStateOf("") }
-    var isEnabled by remember { mutableStateOf(false) }
-    var hasMessageError by remember { mutableStateOf(false) }
-    var showHistory by remember { mutableStateOf(false) }
-    var sentMessagesCount by remember { mutableIntStateOf(0) }
-    var responseMode by remember { mutableStateOf(ResponseMode.SPECIFIC_NUMBERS) }
-    var numbersList by remember { mutableStateOf(listOf<String>()) }
-    var newPhoneNumber by remember { mutableStateOf("") }
-    var hasPhoneError by remember { mutableStateOf(false) }
+    when (screen) {
+        Screen.SPLASH -> {
+            SplashScreen(onTimeout = { screen = Screen.HOME })
+        }
+        else -> {
+            Scaffold(
+                topBar = {
+                    TopAppBar(
+                        title = {
+                            Column {
+                                Text(
+                                    "AutoResponder Pro",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = Color.White
+                                )
+                                Text(
+                                    when (screen) {
+                                        Screen.HOME -> "Asistente Inteligente de Llamadas"
+                                        Screen.SETTINGS -> "Ajustes"
+                                        else -> ""
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White.copy(alpha = 0.7f)
+                                )
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = GradientStart,
+                            titleContentColor = Color.White
+                        ),
+                        navigationIcon = {
+                            if (screen == Screen.SETTINGS) {
+                                IconButton(onClick = { screen = Screen.HOME }) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Volver", tint = Color.White)
+                                }
+                            }
+                        },
+                        actions = {
+                            if (screen == Screen.HOME) {
+                                IconButton(onClick = { screen = Screen.SETTINGS }) {
+                                    Icon(Icons.Default.Settings, "Ajustes", tint = Color.White)
+                                }
+                            }
+                        }
+                    )
+                },
+                snackbarHost = { SnackbarHost(snackbar) },
+                containerColor = MaterialTheme.colorScheme.background
+            ) { pad ->
+                when (screen) {
+                    Screen.HOME -> HomeScreen(Modifier.padding(pad), context, snackbar, scope)
+                    Screen.SETTINGS -> SettingsScreen(Modifier.padding(pad), context, snackbar, scope, onRequestPermissions)
+                    else -> {}
+                }
+            }
+        }
+    }
+}
 
+// ══════════════════════════════════════════════════════════════
+// SPLASH Screen
+// ══════════════════════════════════════════════════════════════
+
+@Composable
+private fun SplashScreen(onTimeout: () -> Unit) {
     LaunchedEffect(Unit) {
-        message = prefs.getString("auto_reply_message", "") ?: ""
-        isEnabled = prefs.getBoolean("auto_reply_enabled", false)
-        sentMessagesCount = prefs.getInt("sent_messages_count", 0)
-        responseMode = prefs.getString("response_mode", ResponseMode.SPECIFIC_NUMBERS) ?: ResponseMode.SPECIFIC_NUMBERS
-        numbersList = loadNumbersList(prefs)
+        delay(2000)
+        onTimeout()
     }
 
-    val canEnable = message.isNotBlank() && !hasMessageError &&
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Brush.verticalGradient(listOf(GradientStart, GradientEnd))),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Image(
+                painter = painterResource(id = R.drawable.logo),
+                contentDescription = "Logo",
+                modifier = Modifier
+                    .size(150.dp)
+                    .clip(CircleShape)
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                text = "AutoResponder Pro",
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White
+            )
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
+// HOME Screen
+// ══════════════════════════════════════════════════════════════
+
+@Composable
+private fun HomeScreen(
+    modifier: Modifier,
+    context: Context,
+    snackbar: SnackbarHostState,
+    scope: CoroutineScope
+) {
+    val prefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
+
+    var isEnabled by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf("") }
+    var msgError by remember { mutableStateOf(false) }
+    var responseMode by remember { mutableStateOf(ResponseMode.SPECIFIC_NUMBERS) }
+    var numbersList by remember { mutableStateOf(listOf<String>()) }
+    var newPhone by remember { mutableStateOf("") }
+    var phoneError by remember { mutableStateOf(false) }
+    var sentCount by remember { mutableIntStateOf(0) }
+    var showHistory by remember { mutableStateOf(false) }
+    var testPhone by remember { mutableStateOf("") }
+
+    // Load saved state
+    LaunchedEffect(Unit) {
+        isEnabled = prefs.getBoolean(KEY_ENABLED, false)
+        message = prefs.getString(KEY_MESSAGE, "") ?: ""
+        responseMode = prefs.getString(KEY_RESPONSE_MODE, ResponseMode.SPECIFIC_NUMBERS) ?: ResponseMode.SPECIFIC_NUMBERS
+        numbersList = loadNumbers(prefs)
+        sentCount = prefs.getInt(KEY_SENT_COUNT, 0)
+    }
+
+    val canEnable = message.isNotBlank() && !msgError &&
             (responseMode != ResponseMode.SPECIFIC_NUMBERS || numbersList.isNotEmpty())
 
     Column(
@@ -323,154 +372,126 @@ fun AutoReplyConfigScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Status Card
-        StatusCard(
+        // ─── Status Hero Card ───
+        StatusHeroCard(
             isEnabled = isEnabled,
             canEnable = canEnable,
-            sentMessagesCount = sentMessagesCount,
+            sentCount = sentCount,
+            responseMode = responseMode,
             onToggle = {
                 if (canEnable || isEnabled) {
                     isEnabled = !isEnabled
-                    prefs.edit().putBoolean("auto_reply_enabled", isEnabled).apply()
-
-                    val messageText = if (isEnabled) {
-                        "Respuesta automática ACTIVADA"
-                    } else {
-                        "Respuesta automática DESACTIVADA"
-                    }
-
+                    prefs.edit().putBoolean(KEY_ENABLED, isEnabled).apply()
                     scope.launch {
-                        snackbarHostState.showSnackbar(
-                            message = messageText,
+                        snackbar.showSnackbar(
+                            if (isEnabled) "✅ Respuesta automática ACTIVADA"
+                            else "⏸ Respuesta automática DESACTIVADA",
                             duration = SnackbarDuration.Short
                         )
                     }
                 } else {
-                    scope.launch {
-                        snackbarHostState.showSnackbar(
-                            message = "Complete la configuración antes de activar",
-                            duration = SnackbarDuration.Short
-                        )
-                    }
+                    Toast.makeText(context, "Por favor complete la configuración primero", Toast.LENGTH_SHORT).show()
                 }
             }
         )
 
-        // Response Mode Card
+        // ─── Response Mode Selector ───
         ResponseModeCard(
             selectedMode = responseMode,
-            isEnabled = isEnabled,
+            locked = isEnabled,
             onModeSelected = { mode ->
                 responseMode = mode
-                prefs.edit().putString("response_mode", mode).apply()
+                prefs.edit().putString(KEY_RESPONSE_MODE, mode).apply()
             }
         )
 
-        // Phone Numbers Card (only visible in SPECIFIC_NUMBERS mode)
+        // ─── Specific Numbers (Chips) ───
         AnimatedVisibility(
             visible = responseMode == ResponseMode.SPECIFIC_NUMBERS,
             enter = fadeIn() + expandVertically(),
             exit = fadeOut() + shrinkVertically()
         ) {
-            PhoneNumbersCard(
-                numbersList = numbersList,
-                newPhoneNumber = newPhoneNumber,
-                onNewPhoneNumberChange = {
-                    newPhoneNumber = it
-                    hasPhoneError = !isValidPhoneNumber(it) && it.isNotBlank()
-                },
-                hasPhoneError = hasPhoneError,
-                isEnabled = isEnabled,
-                onAddNumber = {
-                    if (isValidPhoneNumber(newPhoneNumber) && !numbersList.contains(newPhoneNumber)) {
-                        numbersList = numbersList + newPhoneNumber
-                        saveNumbersList(prefs, numbersList)
-                        newPhoneNumber = ""
-                        scope.launch {
-                            snackbarHostState.showSnackbar("Número agregado")
+            NumbersChipCard(
+                numbers = numbersList,
+                newPhone = newPhone,
+                phoneError = phoneError,
+                locked = isEnabled,
+                onNewPhoneChange = { newPhone = it; phoneError = false },
+                onAdd = {
+                    val cleaned = newPhone.trim()
+                    when {
+                        !isValidPhone(cleaned) -> phoneError = true
+                        numbersList.any { it == cleaned } -> {
+                            scope.launch { snackbar.showSnackbar("Ese número ya está en la lista") }
+                        }
+                        else -> {
+                            numbersList = numbersList + cleaned
+                            saveNumbers(prefs, numbersList)
+                            newPhone = ""
+                            scope.launch { snackbar.showSnackbar("Número agregado ✓") }
                         }
                     }
                 },
-                onRemoveNumber = { number ->
-                    numbersList = numbersList - number
-                    saveNumbersList(prefs, numbersList)
+                onRemove = { num ->
+                    numbersList = numbersList.filter { it != num }
+                    saveNumbers(prefs, numbersList)
                 }
             )
         }
 
-        // Message Configuration Card
+        // ─── Message ───
         MessageCard(
             message = message,
-            onMessageChange = {
-                message = it
-                hasMessageError = it.length > 160
-            },
-            hasMessageError = hasMessageError,
-            isEnabled = isEnabled,
+            error = msgError,
+            locked = isEnabled,
+            onMessageChange = { message = it; msgError = it.length > 160 },
             onSave = {
                 if (message.isNotBlank() && message.length <= 160) {
-                    prefs.edit().putString("auto_reply_message", message).apply()
-                    scope.launch {
-                        snackbarHostState.showSnackbar(
-                            message = "Mensaje guardado exitosamente",
-                            duration = SnackbarDuration.Short
-                        )
-                    }
+                    prefs.edit().putString(KEY_MESSAGE, message).apply()
+                    scope.launch { snackbar.showSnackbar("✅ Mensaje guardado") }
                 } else {
-                    scope.launch {
-                        snackbarHostState.showSnackbar(
-                            message = "Verifique el mensaje",
-                            duration = SnackbarDuration.Short
-                        )
-                    }
-                }
-            },
-            onTestSms = {
-                if (message.isNotBlank()) {
-                    val numbersToSend = if (responseMode == ResponseMode.SPECIFIC_NUMBERS) {
-                        numbersList
-                    } else {
-                        // For test in non-specific mode, ask for a number
-                        if (newPhoneNumber.isNotBlank() && isValidPhoneNumber(newPhoneNumber)) {
-                            listOf(newPhoneNumber)
-                        } else {
-                            numbersList
-                        }
-                    }
-
-                    if (numbersToSend.isNotEmpty()) {
-                        numbersToSend.forEach { number ->
-                            val serviceIntent = Intent(context, SmsSenderService::class.java).apply {
-                                putExtra(SmsSenderService.EXTRA_PHONE_NUMBER, number)
-                                putExtra(SmsSenderService.EXTRA_MESSAGE, message)
-                            }
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                context.startForegroundService(serviceIntent)
-                            } else {
-                                context.startService(serviceIntent)
-                            }
-                        }
-                        scope.launch {
-                            snackbarHostState.showSnackbar("Enviando SMS de prueba a ${numbersToSend.size} número(s)...")
-                        }
-                    } else {
-                        scope.launch {
-                            snackbarHostState.showSnackbar("Agregue al menos un número para probar")
-                        }
-                    }
+                    scope.launch { snackbar.showSnackbar("Verifique el mensaje") }
                 }
             }
         )
 
-        // History Button
+        // ─── Test SMS ───
+        TestSmsCard(
+            testPhone = testPhone,
+            onPhoneChange = { testPhone = it },
+            message = message,
+            onSend = {
+                val target = testPhone.trim()
+                if (isValidPhone(target) && message.isNotBlank()) {
+                    val intent = Intent(context, SmsSenderService::class.java).apply {
+                        putExtra(SmsSenderService.EXTRA_PHONE_NUMBER, target)
+                        putExtra(SmsSenderService.EXTRA_MESSAGE, message)
+                    }
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        context.startForegroundService(intent)
+                    } else {
+                        context.startService(intent)
+                    }
+                    scope.launch { snackbar.showSnackbar("Enviando SMS de prueba a $target...") }
+                } else {
+                    scope.launch { snackbar.showSnackbar("Ingrese un número válido y un mensaje") }
+                }
+            }
+        )
+
+        // ─── History ───
         OutlinedButton(
             onClick = { showHistory = !showHistory },
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(16.dp),
+            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
         ) {
-            Icon(imageVector = Icons.Default.DateRange, contentDescription = null)
-            Spacer(modifier = Modifier.width(8.dp))
-            Text(if (showHistory) "Ocultar historial" else "Ver historial de mensajes")
+            Icon(Icons.Default.DateRange, null)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                if (showHistory) "Ocultar historial" else "📜 Ver historial de mensajes",
+                fontWeight = FontWeight.Medium
+            )
         }
 
         AnimatedVisibility(
@@ -478,23 +499,34 @@ fun AutoReplyConfigScreen(
             enter = fadeIn() + expandVertically(),
             exit = fadeOut() + shrinkVertically()
         ) {
-            HistoryCard(context = context)
+            HistoryCard(context)
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
+        // ─── Info ───
         InfoSection()
+
+        Spacer(Modifier.height(24.dp))
     }
 }
 
-// --- Status Card ---
+// ══════════════════════════════════════════════════════════════
+// Status Hero Card
+// ══════════════════════════════════════════════════════════════
+
 @Composable
-fun StatusCard(
+private fun StatusHeroCard(
     isEnabled: Boolean,
     canEnable: Boolean,
-    sentMessagesCount: Int,
+    sentCount: Int,
+    responseMode: String,
     onToggle: () -> Unit
 ) {
+    val iconScale by animateFloatAsState(
+        targetValue = if (isEnabled) 1.1f else 1f,
+        animationSpec = tween(300),
+        label = "iconPulse"
+    )
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -505,13 +537,12 @@ fun StatusCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
-                    if (isEnabled) {
-                        Brush.verticalGradient(listOf(SuccessGreen, SuccessGreen.copy(alpha = 0.7f)))
-                    } else {
-                        Brush.verticalGradient(listOf(GradientStart, GradientEnd))
-                    }
+                    Brush.verticalGradient(
+                        if (isEnabled) listOf(SuccessGreen, SuccessGreen.copy(alpha = 0.7f))
+                        else listOf(GradientStart, GradientEnd)
+                    )
                 )
-                .padding(20.dp)
+                .padding(24.dp)
         ) {
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -520,82 +551,81 @@ fun StatusCard(
                 Box(
                     modifier = Modifier
                         .size(80.dp)
+                        .scale(iconScale)
                         .clip(CircleShape)
-                        .background(
-                            if (isEnabled) SuccessGreen.copy(alpha = 0.2f)
-                            else WarningOrange.copy(alpha = 0.2f)
-                        ),
+                        .background(Color.White.copy(alpha = 0.2f)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = if (isEnabled) Icons.Default.Check else Icons.Default.PlayArrow,
                         contentDescription = null,
                         modifier = Modifier.size(40.dp),
-                        tint = if (isEnabled) SuccessGreen else WarningOrange
+                        tint = Color.White
                     )
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(Modifier.height(16.dp))
 
                 Text(
-                    text = if (isEnabled) "Sistema Activo" else "Sistema Inactivo",
+                    if (isEnabled) "Sistema Activo" else "Sistema Inactivo",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
-                    color = if (isEnabled) SuccessGreen else MaterialTheme.colorScheme.onSurface
+                    color = Color.White
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(Modifier.height(4.dp))
 
                 Text(
-                    text = if (isEnabled) {
-                        "La app responderá automáticamente con SMS"
-                    } else {
-                        "Active el sistema para comenzar a responder automáticamente"
+                    when {
+                        isEnabled -> "Modo: ${modeLabel(responseMode)}"
+                        else -> "Configure y active para responder automáticamente"
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = Color.White.copy(alpha = 0.85f)
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                if (sentMessagesCount > 0) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
+                if (sentCount > 0) {
+                    Spacer(Modifier.height(8.dp))
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = Color.White.copy(alpha = 0.2f)
                     ) {
                         Text(
-                            text = "$sentMessagesCount mensajes enviados",
+                            "$sentCount mensajes enviados",
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                             style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.primary
+                            color = Color.White,
+                            fontWeight = FontWeight.Medium
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(Modifier.height(20.dp))
 
                 Button(
                     onClick = onToggle,
                     enabled = canEnable || isEnabled,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isEnabled) {
-                            MaterialTheme.colorScheme.error
-                        } else {
-                            MaterialTheme.colorScheme.primary
-                        }
+                        containerColor = if (isEnabled) Color.White.copy(alpha = 0.25f)
+                        else Color.White.copy(alpha = 0.3f)
                     ),
-                    shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth()
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp)
                 ) {
                     Icon(
-                        imageVector = if (isEnabled) Icons.Default.Check else Icons.Default.PlayArrow,
-                        contentDescription = null
+                        if (isEnabled) Icons.Default.Close else Icons.Default.PlayArrow,
+                        null,
+                        tint = Color.White
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(Modifier.width(8.dp))
                     Text(
                         if (isEnabled) "DESACTIVAR" else "ACTIVAR",
                         style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
                     )
                 }
             }
@@ -603,561 +633,416 @@ fun StatusCard(
     }
 }
 
-// --- Response Mode Card ---
+private fun modeLabel(mode: String) = when (mode) {
+    ResponseMode.ALL -> "Todas las llamadas"
+    ResponseMode.CONTACTS_ONLY -> "Solo contactos"
+    ResponseMode.UNKNOWN_ONLY -> "Solo desconocidos"
+    else -> "Números específicos"
+}
+
+// ══════════════════════════════════════════════════════════════
+// Response Mode Card
+// ══════════════════════════════════════════════════════════════
+
 @Composable
-fun ResponseModeCard(
+private fun ResponseModeCard(
     selectedMode: String,
-    isEnabled: Boolean,
+    locked: Boolean,
     onModeSelected: (String) -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Phone,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "¿A quién responder?",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
+    SectionCard(icon = Icons.Default.Phone, title = "¿A quién responder?") {
+        val modes = listOf(
+            Triple(ResponseMode.ALL, "Todas las llamadas", "Responde a cualquier número"),
+            Triple(ResponseMode.CONTACTS_ONLY, "Solo contactos", "Solo números guardados en tu dispositivo"),
+            Triple(ResponseMode.UNKNOWN_ONLY, "Solo desconocidos", "Números que NO están en contactos"),
+            Triple(ResponseMode.SPECIFIC_NUMBERS, "Números específicos", "Solo los números de tu lista")
+        )
 
-            Divider()
-
-            ResponseModeOption(
-                icon = Icons.Default.Home,
-                title = "Todas las llamadas",
-                description = "Responde a cualquier número que llame",
-                isSelected = selectedMode == ResponseMode.ALL,
-                enabled = !isEnabled,
-                onClick = { onModeSelected(ResponseMode.ALL) }
+        modes.forEach { (mode, title, desc) ->
+            ModeOption(
+                title = title,
+                description = desc,
+                selected = selectedMode == mode,
+                enabled = !locked,
+                onClick = { onModeSelected(mode) }
             )
+        }
 
-            ResponseModeOption(
-                icon = Icons.Default.Person,
-                title = "Solo contactos",
-                description = "Solo responde a números guardados en tu dispositivo",
-                isSelected = selectedMode == ResponseMode.CONTACTS_ONLY,
-                enabled = !isEnabled,
-                onClick = { onModeSelected(ResponseMode.CONTACTS_ONLY) }
-            )
-
-            ResponseModeOption(
-                icon = Icons.Default.Warning,
-                title = "Solo desconocidos",
-                description = "Responde a números que NO están en tus contactos",
-                isSelected = selectedMode == ResponseMode.UNKNOWN_ONLY,
-                enabled = !isEnabled,
-                onClick = { onModeSelected(ResponseMode.UNKNOWN_ONLY) }
-            )
-
-            ResponseModeOption(
-                icon = Icons.Default.Phone,
-                title = "Números específicos",
-                description = "Solo responde a los números de tu lista personalizada",
-                isSelected = selectedMode == ResponseMode.SPECIFIC_NUMBERS,
-                enabled = !isEnabled,
-                onClick = { onModeSelected(ResponseMode.SPECIFIC_NUMBERS) }
-            )
-
-            if (isEnabled) {
-                Text(
-                    text = "Desactive el sistema para cambiar el modo de respuesta",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
+        if (locked) {
+            LockHint("Desactive el sistema para cambiar el modo")
         }
     }
 }
 
 @Composable
-fun ResponseModeOption(
-    icon: ImageVector,
+private fun ModeOption(
     title: String,
     description: String,
-    isSelected: Boolean,
+    selected: Boolean,
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    val bgColor by animateColorAsState(
-        targetValue = if (isSelected) MaterialTheme.colorScheme.primaryContainer
-        else Color.Transparent,
-        label = "modeBg"
+    val bg by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+        label = "optBg"
     )
-    val borderColor by animateColorAsState(
-        targetValue = if (isSelected) MaterialTheme.colorScheme.primary
-        else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
-        label = "modeBorder"
+    val border by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.primary
+        else MaterialTheme.colorScheme.outlineVariant,
+        label = "optBorder"
     )
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(bgColor)
-            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
-            .clickable(enabled = enabled) { onClick() }
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(28.dp),
-            tint = if (isSelected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurfaceVariant
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = bg,
+        border = androidx.compose.foundation.BorderStroke(
+            if (selected) 2.dp else 1.dp,
+            border
         )
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                color = if (isSelected) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = description,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        if (isSelected) {
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Icon(
-                imageVector = Icons.Default.Check,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(24.dp)
+                if (selected) Icons.Default.Check else Icons.Default.PlayArrow,
+                null,
+                modifier = Modifier.size(22.dp),
+                tint = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.outline
             )
-        }
-    }
-}
-
-// --- Phone Numbers Card (chips) ---
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-fun PhoneNumbersCard(
-    numbersList: List<String>,
-    newPhoneNumber: String,
-    onNewPhoneNumberChange: (String) -> Unit,
-    hasPhoneError: Boolean,
-    isEnabled: Boolean,
-    onAddNumber: () -> Unit,
-    onRemoveNumber: (String) -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.AccountCircle,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.width(8.dp))
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
                 Text(
-                    text = "Números Específicos",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            Divider()
-
-            // Chips/tags for existing numbers
-            if (numbersList.isNotEmpty()) {
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    numbersList.forEach { number ->
-                        PhoneChip(
-                            number = number,
-                            onRemove = { onRemoveNumber(number) },
-                            enabled = !isEnabled
-                        )
-                    }
-                }
-            } else {
-                Text(
-                    text = "No hay números agregados. Agregue al menos uno.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Center
-                )
-            }
-
-            // Add new number
-            if (!isEnabled) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.Top,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedTextField(
-                        value = newPhoneNumber,
-                        onValueChange = onNewPhoneNumberChange,
-                        label = { Text("Agregar número") },
-                        placeholder = { Text("+52 123 456 7890") },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                        modifier = Modifier.weight(1f),
-                        isError = hasPhoneError,
-                        singleLine = true,
-                        shape = RoundedCornerShape(12.dp),
-                        leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
-                        supportingText = {
-                            if (hasPhoneError) {
-                                Text("Número inválido", color = MaterialTheme.colorScheme.error)
-                            }
-                        }
-                    )
-
-                    Button(
-                        onClick = onAddNumber,
-                        modifier = Modifier
-                            .padding(top = 8.dp)
-                            .height(48.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        enabled = newPhoneNumber.isNotBlank() && !hasPhoneError,
-                        colors = ButtonDefaults.buttonColors(containerColor = GradientStart)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = "Agregar")
-                    }
-                }
-            }
-
-            if (isEnabled) {
-                Text(
-                    text = "Desactive el sistema para modificar la lista de números",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun PhoneChip(number: String, onRemove: () -> Unit, enabled: Boolean) {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.primaryContainer)
-            .padding(start = 12.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Icon(
-            imageVector = Icons.Default.Phone,
-            contentDescription = null,
-            modifier = Modifier.size(16.dp),
-            tint = MaterialTheme.colorScheme.primary
-        )
-        Spacer(modifier = Modifier.width(4.dp))
-        Text(
-            text = number,
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onPrimaryContainer
-        )
-        if (enabled) {
-            IconButton(
-                onClick = onRemove,
-                modifier = Modifier.size(24.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Eliminar",
-                    modifier = Modifier.size(16.dp),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-            }
-        }
-    }
-}
-
-// --- Message Configuration Card ---
-@Composable
-fun MessageCard(
-    message: String,
-    onMessageChange: (String) -> Unit,
-    hasMessageError: Boolean,
-    isEnabled: Boolean,
-    onSave: () -> Unit,
-    onTestSms: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Mensaje de Respuesta",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            Divider()
-
-            OutlinedTextField(
-                value = message,
-                onValueChange = onMessageChange,
-                label = { Text("Mensaje de respuesta automática") },
-                placeholder = { Text("Ej: No puedo atender ahora, te contacto más tarde.") },
-                modifier = Modifier.fillMaxWidth(),
-                isError = hasMessageError,
-                enabled = !isEnabled,
-                supportingText = {
-                    val remaining = 160 - message.length
-                    Text(
-                        text = "$remaining caracteres restantes",
-                        color = if (remaining < 0) MaterialTheme.colorScheme.error
-                        else if (remaining < 20) WarningOrange
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                },
-                minLines = 3,
-                maxLines = 5,
-                shape = RoundedCornerShape(12.dp)
-            )
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = onSave,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    enabled = !isEnabled,
-                    colors = ButtonDefaults.buttonColors(containerColor = GradientStart)
-                ) {
-                    Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Guardar", fontSize = 14.sp)
-                }
-
-                OutlinedButton(
-                    onClick = onTestSms,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                    enabled = message.isNotBlank(),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, GradientStart)
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Probar SMS", fontSize = 14.sp)
-                }
-            }
-
-            if (isEnabled) {
-                Text(
-                    text = "Desactive el sistema para modificar el mensaje",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
-    }
-}
-
-// --- Enhanced History Card with message text ---
-@Composable
-fun HistoryCard(context: Context) {
-    val prefs = remember { context.getSharedPreferences("AutoReplyPrefs", Context.MODE_PRIVATE) }
-    val historyJson = prefs.getString("message_history", "") ?: ""
-
-    val history = remember(historyJson) {
-        if (historyJson.isNotEmpty()) {
-            historyJson.split("|||").mapNotNull { entry ->
-                val parts = entry.split("||")
-                when {
-                    parts.size >= 3 -> HistoryEntry(parts[0], parts[1], parts[2])
-                    parts.size >= 2 -> HistoryEntry(parts[0], parts[1], "")
-                    else -> null
-                }
-            }.reversed()
-        } else emptyList()
-    }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.DateRange,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.tertiary
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = "Historial de Mensajes",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            if (history.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(32.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = Icons.Default.Menu,
-                            contentDescription = null,
-                            modifier = Modifier.size(48.dp),
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "No hay mensajes enviados aún",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            } else {
-                Text(
-                    text = "${history.size} mensaje(s) en total",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(bottom = 8.dp)
-                )
-                history.take(10).forEachIndexed { index, entry ->
-                    HistoryItem(entry)
-                    if (index < minOf(history.size, 10) - 1) {
-                        Divider(modifier = Modifier.padding(vertical = 8.dp))
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-fun HistoryItem(entry: HistoryEntry) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        Icon(
-            imageVector = Icons.Default.Check,
-            contentDescription = null,
-            modifier = Modifier
-                .size(20.dp)
-                .padding(top = 2.dp),
-            tint = SuccessGreen
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = entry.phoneNumber,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium
+                    title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                    color = if (selected) MaterialTheme.colorScheme.primary
+                    else MaterialTheme.colorScheme.onSurface
                 )
                 Text(
-                    text = entry.timestamp,
+                    description,
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            if (entry.message.isNotBlank()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "\"${entry.message}\"",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Light
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Numbers Chip Card
+// ══════════════════════════════════════════════════════════════
+
+@Composable
+private fun NumbersChipCard(
+    numbers: List<String>,
+    newPhone: String,
+    phoneError: Boolean,
+    locked: Boolean,
+    onNewPhoneChange: (String) -> Unit,
+    onAdd: () -> Unit,
+    onRemove: (String) -> Unit
+) {
+    SectionCard(icon = Icons.Default.AccountCircle, title = "Números Específicos") {
+
+        if (numbers.isNotEmpty()) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                numbers.forEach { num ->
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        color = MaterialTheme.colorScheme.primaryContainer
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Phone, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                num,
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f)
+                            )
+                            if (!locked) {
+                                IconButton(onClick = { onRemove(num) }, modifier = Modifier.size(28.dp)) {
+                                    Icon(Icons.Default.Close, "Eliminar", Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onPrimaryContainer)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            Text(
+                "No hay números. Agregue al menos uno.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center
+            )
+        }
+
+        if (!locked) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                OutlinedTextField(
+                    value = newPhone,
+                    onValueChange = onNewPhoneChange,
+                    label = { Text("Número de teléfono") },
+                    placeholder = { Text("+52 123 456 7890") },
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Phone,
+                        imeAction = ImeAction.Done
+                    ),
+                    keyboardActions = KeyboardActions(onDone = { onAdd() }),
+                    modifier = Modifier.weight(1f),
+                    isError = phoneError,
+                    singleLine = true,
+                    shape = RoundedCornerShape(14.dp),
+                    leadingIcon = { Icon(Icons.Default.Phone, null) },
+                    supportingText = {
+                        if (phoneError) Text("Número inválido (mín. 8 dígitos)", color = MaterialTheme.colorScheme.error)
+                    }
                 )
+                Button(
+                    onClick = onAdd,
+                    modifier = Modifier
+                        .padding(top = 8.dp)
+                        .height(50.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    enabled = newPhone.isNotBlank() && !phoneError,
+                    colors = ButtonDefaults.buttonColors(containerColor = GradientStart)
+                ) {
+                    Icon(Icons.Default.Add, "Agregar", tint = Color.White)
+                }
+            }
+        }
+
+        if (locked) LockHint("Desactive el sistema para editar números")
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Message Card
+// ══════════════════════════════════════════════════════════════
+
+@Composable
+private fun MessageCard(
+    message: String,
+    error: Boolean,
+    locked: Boolean,
+    onMessageChange: (String) -> Unit,
+    onSave: () -> Unit
+) {
+    SectionCard(icon = Icons.Default.Edit, title = "Mensaje de Respuesta") {
+        OutlinedTextField(
+            value = message,
+            onValueChange = onMessageChange,
+            label = { Text("Mensaje automático") },
+            placeholder = { Text("No puedo atender ahora, te contacto más tarde.") },
+            modifier = Modifier.fillMaxWidth(),
+            isError = error,
+            enabled = !locked,
+            minLines = 3,
+            maxLines = 5,
+            shape = RoundedCornerShape(14.dp),
+            supportingText = {
+                val rem = 160 - message.length
+                Text(
+                    "$rem caracteres restantes",
+                    color = when {
+                        rem < 0 -> MaterialTheme.colorScheme.error
+                        rem < 20 -> WarningOrange
+                        else -> MaterialTheme.colorScheme.onSurfaceVariant
+                    }
+                )
+            }
+        )
+
+        Button(
+            onClick = onSave,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            enabled = !locked && message.isNotBlank(),
+            colors = ButtonDefaults.buttonColors(containerColor = GradientStart)
+        ) {
+            Icon(Icons.Default.Check, null, Modifier.size(18.dp), tint = Color.White)
+            Spacer(Modifier.width(6.dp))
+            Text("Guardar Mensaje", fontWeight = FontWeight.Bold, color = Color.White)
+        }
+
+        if (locked) LockHint("Desactive el sistema para editar el mensaje")
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
+// Test SMS Card
+// ══════════════════════════════════════════════════════════════
+
+@Composable
+private fun TestSmsCard(
+    testPhone: String,
+    onPhoneChange: (String) -> Unit,
+    message: String,
+    onSend: () -> Unit
+) {
+    SectionCard(icon = Icons.AutoMirrored.Filled.Send, title = "Prueba de Envío") {
+        Text(
+            "Envía un SMS de prueba para verificar que todo funciona correctamente.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        OutlinedTextField(
+            value = testPhone,
+            onValueChange = onPhoneChange,
+            label = { Text("Número de destino") },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+            modifier = Modifier.fillMaxWidth(),
+            singleLine = true,
+            shape = RoundedCornerShape(14.dp),
+            leadingIcon = { Icon(Icons.Default.Phone, null) }
+        )
+
+        Button(
+            onClick = onSend,
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+            enabled = testPhone.isNotBlank() && message.isNotBlank(),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+        ) {
+            Icon(Icons.AutoMirrored.Filled.Send, null, Modifier.size(18.dp))
+            Spacer(Modifier.width(6.dp))
+            Text("Enviar SMS de Prueba", fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+// ══════════════════════════════════════════════════════════════
+// History Card (reads phone||timestamp||message format)
+// ══════════════════════════════════════════════════════════════
+
+@Composable
+private fun HistoryCard(context: Context) {
+    val prefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
+    val raw = prefs.getString(KEY_HISTORY, "") ?: ""
+
+    data class Entry(val phone: String, val time: String, val msg: String)
+
+    val history = remember(raw) {
+        if (raw.isEmpty()) emptyList()
+        else raw.split("|||").mapNotNull { chunk ->
+            val p = chunk.split("||")
+            when {
+                p.size >= 3 -> Entry(p[0], p[1], p[2])
+                p.size >= 2 -> Entry(p[0], p[1], "")
+                else -> null
+            }
+        }.reversed()
+    }
+
+    SectionCard(icon = Icons.Default.DateRange, title = "Historial de Mensajes") {
+        if (history.isEmpty()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    Icons.Default.Menu, null,
+                    Modifier.size(48.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                )
+                Spacer(Modifier.height(8.dp))
+                Text("No hay mensajes enviados aún", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else {
+            Text(
+                "${history.size} mensaje(s) en total",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.height(8.dp))
+            history.take(15).forEachIndexed { idx, e ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Icon(
+                        Icons.Default.Check, null,
+                        Modifier
+                            .size(20.dp)
+                            .padding(top = 2.dp),
+                        tint = SuccessGreen
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text(e.phone, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                            Text(e.time, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        if (e.msg.isNotBlank()) {
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                "\"${e.msg}\"",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+                if (idx < minOf(history.size, 15) - 1) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 4.dp),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                    )
+                }
             }
         }
     }
 }
 
-// --- Settings Screen ---
+// ══════════════════════════════════════════════════════════════
+// SETTINGS Screen
+// ══════════════════════════════════════════════════════════════
+
 @Composable
-fun SettingsScreen(
-    modifier: Modifier = Modifier,
+private fun SettingsScreen(
+    modifier: Modifier,
     context: Context,
-    snackbarHostState: SnackbarHostState,
+    snackbar: SnackbarHostState,
     scope: CoroutineScope,
     onRequestPermissions: () -> Unit
 ) {
-    val prefs = remember { context.getSharedPreferences("AutoReplyPrefs", Context.MODE_PRIVATE) }
-    var replyToPrivate by remember { mutableStateOf(prefs.getBoolean("reply_to_private", false)) }
-    var showClearDialog by remember { mutableStateOf(false) }
-    var showResetDialog by remember { mutableStateOf(false) }
+    val prefs = remember { context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE) }
+    var replyPrivate by remember { mutableStateOf(prefs.getBoolean(KEY_REPLY_PRIVATE, false)) }
+    var showClearDlg by remember { mutableStateOf(false) }
+    var showResetDlg by remember { mutableStateOf(false) }
 
-    // Permission statuses
-    val hasPhoneState = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED
-    val hasCallLog = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALL_LOG) == PackageManager.PERMISSION_GRANTED
-    val hasSendSms = ContextCompat.checkSelfPermission(context, Manifest.permission.SEND_SMS) == PackageManager.PERMISSION_GRANTED
-    val hasContacts = ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED
+    val perms = listOf(
+        "Leer estado del teléfono" to Manifest.permission.READ_PHONE_STATE,
+        "Registro de llamadas" to Manifest.permission.READ_CALL_LOG,
+        "Enviar SMS" to Manifest.permission.SEND_SMS,
+        "Leer contactos" to Manifest.permission.READ_CONTACTS
+    )
 
     Column(
         modifier = modifier
@@ -1166,163 +1051,113 @@ fun SettingsScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // Permissions Card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Permisos",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-
-                Divider()
-
-                PermissionItem("Leer estado del teléfono", hasPhoneState)
-                PermissionItem("Leer registro de llamadas", hasCallLog)
-                PermissionItem("Enviar SMS", hasSendSms)
-                PermissionItem("Leer contactos", hasContacts)
-
-                if (!hasPhoneState || !hasCallLog || !hasSendSms || !hasContacts) {
-                    Button(
-                        onClick = onRequestPermissions,
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = GradientStart)
-                    ) {
-                        Text("Solicitar Permisos Faltantes")
-                    }
-                } else {
-                    Text(
-                        text = "✓ Todos los permisos concedidos",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = SuccessGreen,
-                        fontWeight = FontWeight.Medium,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            }
-        }
-
-        // Options Card
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Settings,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Opciones",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-
-                Divider()
-
-                // Reply to private/unknown calls toggle
+        // ─── Permisos ───
+        SectionCard(icon = Icons.Default.Info, title = "Permisos") {
+            perms.forEach { (label, perm) ->
+                val ok = ContextCompat.checkSelfPermission(context, perm) == PackageManager.PERMISSION_GRANTED
                 Row(
-                    modifier = Modifier
+                    Modifier
                         .fillMaxWidth()
                         .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Llamadas privadas",
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Medium
-                        )
-                        Text(
-                            text = "Intentar responder cuando el número es privado/oculto",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Switch(
-                        checked = replyToPrivate,
-                        onCheckedChange = {
-                            replyToPrivate = it
-                            prefs.edit().putBoolean("reply_to_private", it).apply()
-                        },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = Color.White,
-                            checkedTrackColor = SuccessGreen
-                        )
-                    )
-                }
-
-                Divider()
-
-                // Clear history button
-                OutlinedButton(
-                    onClick = { showClearDialog = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
-                        Icons.Default.Delete,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.size(18.dp)
+                        if (ok) Icons.Default.Check else Icons.Default.Close,
+                        null,
+                        Modifier.size(20.dp),
+                        tint = if (ok) SuccessGreen else MaterialTheme.colorScheme.error
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Limpiar historial de mensajes", color = MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (ok) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error
+                    )
                 }
+            }
 
-                // Reset counter button
-                OutlinedButton(
-                    onClick = { showResetDialog = true },
+            val allGranted = perms.all {
+                ContextCompat.checkSelfPermission(context, it.second) == PackageManager.PERMISSION_GRANTED
+            }
+
+            if (!allGranted) {
+                Spacer(Modifier.height(4.dp))
+                Button(
+                    onClick = onRequestPermissions,
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, WarningOrange)
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = GradientStart)
                 ) {
-                    Icon(
-                        Icons.Default.Clear,
-                        contentDescription = null,
-                        tint = WarningOrange,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Resetear contador de mensajes", color = WarningOrange)
+                    Text("Solicitar Permisos Faltantes", fontWeight = FontWeight.Bold, color = Color.White)
                 }
+            } else {
+                Text(
+                    "✓ Todos los permisos concedidos",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = SuccessGreen,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
 
-        // About Card
+        // ─── Opciones ───
+        SectionCard(icon = Icons.Default.Settings, title = "Opciones") {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("Llamadas privadas", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                    Text(
+                        "Intentar responder a números ocultos/privados",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = replyPrivate,
+                    onCheckedChange = {
+                        replyPrivate = it
+                        prefs.edit().putBoolean(KEY_REPLY_PRIVATE, it).apply()
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = SuccessGreen
+                    )
+                )
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            OutlinedButton(
+                onClick = { showClearDlg = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+            ) {
+                Icon(Icons.Default.Delete, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.error)
+                Spacer(Modifier.width(8.dp))
+                Text("Limpiar historial", color = MaterialTheme.colorScheme.error)
+            }
+
+            OutlinedButton(
+                onClick = { showResetDlg = true },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(14.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, WarningOrange)
+            ) {
+                Icon(Icons.Default.Clear, null, Modifier.size(18.dp), tint = WarningOrange)
+                Spacer(Modifier.width(8.dp))
+                Text("Resetear contador", color = WarningOrange)
+            }
+        }
+
+        // ─── Acerca de ───
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
@@ -1337,174 +1172,133 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.secondary
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Acerca de",
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Icon(Icons.Default.Info, null, tint = MaterialTheme.colorScheme.secondary)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Acerca de", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
                 }
-
-                Divider()
-
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                Text("AutoResponder Pro v2.0", style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
                 Text(
-                    text = "AutoResponder Pro v2.0",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = "Aplicación de respuesta automática por SMS ante llamadas entrantes. " +
-                            "Utiliza BroadcastReceiver para detectar el estado del teléfono " +
-                            "y un Foreground Service para enviar los mensajes de forma confiable.",
+                    "Respuesta automática por SMS ante llamadas entrantes. " +
+                            "Usa BroadcastReceiver y Foreground Service para enviar mensajes de forma confiable.",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    text = "Desarrolladores: Alejandro & Equipo",
-                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(Modifier.height(32.dp))
     }
 
-    // Clear history confirmation dialog
-    if (showClearDialog) {
+    // Dialogs
+    if (showClearDlg) {
         AlertDialog(
-            onDismissRequest = { showClearDialog = false },
+            onDismissRequest = { showClearDlg = false },
             title = { Text("Limpiar historial") },
-            text = { Text("¿Estás seguro de que deseas eliminar todo el historial de mensajes enviados?") },
+            text = { Text("¿Eliminar todo el historial de mensajes enviados?") },
             confirmButton = {
                 TextButton(onClick = {
-                    prefs.edit().remove("message_history").apply()
-                    showClearDialog = false
-                    scope.launch {
-                        snackbarHostState.showSnackbar("Historial limpiado")
-                    }
-                }) {
-                    Text("Eliminar", color = MaterialTheme.colorScheme.error)
-                }
+                    prefs.edit().remove(KEY_HISTORY).apply()
+                    showClearDlg = false
+                    scope.launch { snackbar.showSnackbar("Historial limpiado") }
+                }) { Text("Eliminar", color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = {
-                TextButton(onClick = { showClearDialog = false }) {
-                    Text("Cancelar")
-                }
-            }
+            dismissButton = { TextButton(onClick = { showClearDlg = false }) { Text("Cancelar") } }
         )
     }
 
-    // Reset counter confirmation dialog
-    if (showResetDialog) {
+    if (showResetDlg) {
         AlertDialog(
-            onDismissRequest = { showResetDialog = false },
+            onDismissRequest = { showResetDlg = false },
             title = { Text("Resetear contador") },
-            text = { Text("¿Deseas poner el contador de mensajes enviados en 0?") },
+            text = { Text("¿Poner el contador de mensajes enviados en 0?") },
             confirmButton = {
                 TextButton(onClick = {
-                    prefs.edit().putInt("sent_messages_count", 0).apply()
-                    showResetDialog = false
-                    scope.launch {
-                        snackbarHostState.showSnackbar("Contador reseteado")
-                    }
-                }) {
-                    Text("Resetear", color = WarningOrange)
-                }
+                    prefs.edit().putInt(KEY_SENT_COUNT, 0).apply()
+                    showResetDlg = false
+                    scope.launch { snackbar.showSnackbar("Contador reseteado") }
+                }) { Text("Resetear", color = WarningOrange) }
             },
-            dismissButton = {
-                TextButton(onClick = { showResetDialog = false }) {
-                    Text("Cancelar")
-                }
-            }
+            dismissButton = { TextButton(onClick = { showResetDlg = false }) { Text("Cancelar") } }
         )
     }
 }
 
+// ══════════════════════════════════════════════════════════════
+// Reusable Section Card
+// ══════════════════════════════════════════════════════════════
+
 @Composable
-fun PermissionItem(name: String, isGranted: Boolean) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
+private fun SectionCard(
+    icon: ImageVector,
+    title: String,
+    content: @Composable () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
-        Icon(
-            imageVector = if (isGranted) Icons.Default.Check else Icons.Default.Close,
-            contentDescription = null,
-            modifier = Modifier.size(20.dp),
-            tint = if (isGranted) SuccessGreen else MaterialTheme.colorScheme.error
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            text = name,
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (isGranted) MaterialTheme.colorScheme.onSurface
-            else MaterialTheme.colorScheme.error
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(icon, null, tint = MaterialTheme.colorScheme.primary)
+                Spacer(Modifier.width(8.dp))
+                Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            content()
+        }
     }
 }
 
-// --- Info Section ---
 @Composable
-fun InfoSection() {
+private fun LockHint(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
+// ══════════════════════════════════════════════════════════════
+// Info Section
+// ══════════════════════════════════════════════════════════════
+
+@Composable
+private fun InfoSection() {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
+            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f)
         )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            InfoItem(
-                icon = Icons.Default.Info,
-                text = "La app detecta llamadas entrantes según el modo configurado y responde automáticamente con el mensaje establecido."
-            )
-            InfoItem(
-                icon = Icons.Default.Home,
-                text = "Se requieren permisos de teléfono, SMS y contactos. Configure en ⚙ Ajustes."
-            )
-            InfoItem(
-                icon = Icons.Default.Notifications,
-                text = "Recibirás una notificación cada vez que se envíe un SMS automático."
-            )
+            InfoRow(Icons.Default.Info, "Detecta llamadas según el filtro configurado y responde con SMS automáticamente.")
+            InfoRow(Icons.Default.Home, "Permisos de teléfono, SMS y contactos son necesarios. Configúralos en ⚙ Ajustes.")
+            InfoRow(Icons.Default.Notifications, "Recibirás una notificación cada vez que se envíe un SMS.")
         }
     }
 }
 
 @Composable
-fun InfoItem(icon: ImageVector, text: String) {
+private fun InfoRow(icon: ImageVector, text: String) {
     Row(verticalAlignment = Alignment.Top) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(20.dp),
-            tint = MaterialTheme.colorScheme.primary
-        )
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Icon(icon, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+        Spacer(Modifier.width(10.dp))
+        Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-}
-
-// --- Data classes and utilities ---
-data class HistoryEntry(val phoneNumber: String, val timestamp: String, val message: String = "")
-
-fun isValidPhoneNumber(number: String): Boolean {
-    if (number.isBlank()) return false
-    val cleaned = number.replace("[^0-9+]".toRegex(), "")
-    return cleaned.length >= 10 && cleaned.length <= 15
 }
