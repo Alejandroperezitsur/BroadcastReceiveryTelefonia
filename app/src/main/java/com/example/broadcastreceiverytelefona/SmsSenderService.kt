@@ -57,13 +57,9 @@ class SmsSenderService : Service() {
 
         Thread {
             try {
-                // El envío de SMS puede fallar si no hay saldo, pero intentamos enviarlo
                 sendSms(phoneNumber, message)
-                
-                // IMPORTANTE: Insertar en la carpeta de ENVIADOS del sistema
                 insertSmsIntoSentFolder(phoneNumber, message)
-                
-                saveToHistory(this, phoneNumber)
+                saveToHistory(this, phoneNumber, message)
                 showSuccessNotification(phoneNumber)
             } catch (e: Exception) {
                 Log.e(TAG, "Error al procesar el envío de SMS: ${e.message}", e)
@@ -153,20 +149,25 @@ class SmsSenderService : Service() {
             contentResolver.insert(Uri.parse("content://sms/sent"), values)
             Log.d(TAG, "SMS insertado en la carpeta 'Sent' del sistema")
         } catch (e: Exception) {
-            // Esto puede fallar si no somos la app de SMS por defecto en versiones modernas,
-            // pero es un "best-effort" para cumplir con el requerimiento.
             Log.e(TAG, "No se pudo insertar en el historial del sistema: ${e.message}")
         }
     }
 
-    private fun saveToHistory(context: Context, phoneNumber: String) {
+    /**
+     * Guarda el mensaje en el historial interno de la app.
+     * Formato: phoneNumber||timestamp||message|||nextEntry...
+     */
+    private fun saveToHistory(context: Context, phoneNumber: String, message: String) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val currentHistory = prefs.getString("message_history", "") ?: ""
 
         val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
         val timestamp = dateFormat.format(Date())
 
-        val newEntry = "$phoneNumber||$timestamp"
+        // Escapar el mensaje para evitar conflictos con los delimitadores
+        val safeMessage = message.replace("|||", "| | |").replace("||", "| |")
+
+        val newEntry = "$phoneNumber||$timestamp||$safeMessage"
         val updatedHistory = if (currentHistory.isEmpty()) {
             newEntry
         } else {
@@ -174,8 +175,8 @@ class SmsSenderService : Service() {
         }
 
         val entries = updatedHistory.split("|||")
-        val limitedHistory = if (entries.size > 20) {
-            entries.take(20).joinToString("|||")
+        val limitedHistory = if (entries.size > 50) {
+            entries.take(50).joinToString("|||")
         } else updatedHistory
 
         prefs.edit().apply {
@@ -184,7 +185,7 @@ class SmsSenderService : Service() {
             apply()
         }
 
-        Log.d(TAG, "Mensaje guardado en historial")
+        Log.d(TAG, "Mensaje guardado en historial con texto")
     }
 
     private fun createNotificationChannel() {

@@ -4,13 +4,23 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.database.Cursor
+import android.net.Uri
 import android.os.Build
+import android.provider.ContactsContract
 import android.telephony.TelephonyManager
 import android.util.Log
+import org.json.JSONArray
 
 /**
  * BroadcastReceiver que escucha los cambios en el estado del teléfono
  * para detectar llamadas entrantes y activar el envío automático de SMS.
+ *
+ * Soporta 4 modos de respuesta:
+ * - ALL: Responde a todas las llamadas
+ * - CONTACTS_ONLY: Solo a contactos guardados
+ * - UNKNOWN_ONLY: Solo a números desconocidos
+ * - SPECIFIC_NUMBERS: Solo a los números de la lista configurada
  *
  * REGISTRADO EN EL MANIFIESTO como requiere la práctica.
  */
@@ -20,30 +30,34 @@ class PhoneCallReceiver : BroadcastReceiver() {
         private const val TAG = "PhoneCallReceiver"
         private const val PREFS_NAME = "AutoReplyPrefs"
         private const val KEY_ENABLED = "auto_reply_enabled"
-        private const val KEY_TARGET_NUMBER = "target_number"
+        private const val KEY_TARGET_NUMBERS = "target_numbers"
         private const val KEY_MESSAGE = "auto_reply_message"
+        private const val KEY_RESPONSE_MODE = "response_mode"
+        private const val KEY_REPLY_PRIVATE = "reply_to_private"
+
+        // Modos de respuesta
+        const val MODE_ALL = "ALL"
+        const val MODE_CONTACTS_ONLY = "CONTACTS_ONLY"
+        const val MODE_UNKNOWN_ONLY = "UNKNOWN_ONLY"
+        const val MODE_SPECIFIC_NUMBERS = "SPECIFIC_NUMBERS"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         Log.d(TAG, "onReceive llamado con action: ${intent.action}")
 
-        // Verificar que la acción sea la correcta
         if (intent.action != TelephonyManager.ACTION_PHONE_STATE_CHANGED) {
             Log.d(TAG, "Acción no es PHONE_STATE_CHANGED, ignorando")
             return
         }
 
-        // Verificar permisos antes de procesar
         if (!hasRequiredPermissions(context)) {
             Log.e(TAG, "No se tienen los permisos necesarios")
             return
         }
 
-        // Obtener el estado del teléfono
         val state = intent.getStringExtra(TelephonyManager.EXTRA_STATE)
         Log.d(TAG, "Estado del teléfono: $state")
 
-        // Solo procesar cuando está sonando (llamada entrante)
         if (state == TelephonyManager.EXTRA_STATE_RINGING) {
             handleIncomingCall(context, intent)
         }
@@ -51,19 +65,9 @@ class PhoneCallReceiver : BroadcastReceiver() {
 
     /**
      * Maneja una llamada entrante verificando si debe responder automáticamente
+     * según el modo de respuesta configurado.
      */
     private fun handleIncomingCall(context: Context, intent: Intent) {
-        // Obtener número entrante
-        val incomingNumber = getIncomingNumber(intent)
-
-        if (incomingNumber.isNullOrBlank()) {
-            Log.w(TAG, "No se pudo obtener el número entrante (Llamada privada o restricción de Android 10+).")
-            return
-        }
-
-        Log.d(TAG, "Llamada entrante de: $incomingNumber")
-
-        // Verificar si la respuesta automática está habilitada
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val isEnabled = prefs.getBoolean(KEY_ENABLED, false)
 
@@ -72,43 +76,121 @@ class PhoneCallReceiver : BroadcastReceiver() {
             return
         }
 
-        val targetNumber = prefs.getString(KEY_TARGET_NUMBER, "")
         val autoReplyMessage = prefs.getString(KEY_MESSAGE, "")
-
-        Log.d(TAG, "Configuración - Número objetivo: $targetNumber, Mensaje: $autoReplyMessage")
-
-        // Validar configuración
-        if (targetNumber.isNullOrBlank() || autoReplyMessage.isNullOrBlank()) {
-            Log.w(TAG, "Configuración incompleta")
+        if (autoReplyMessage.isNullOrBlank()) {
+            Log.w(TAG, "No hay mensaje configurado")
             return
         }
 
-        // Normalizar números para comparación
-        val normalizedIncoming = normalizePhoneNumber(incomingNumber)
-        val normalizedTarget = normalizePhoneNumber(targetNumber)
+        val responseMode = prefs.getString(KEY_RESPONSE_MODE, MODE_SPECIFIC_NUMBERS) ?: MODE_SPECIFIC_NUMBERS
+        val replyToPrivate = prefs.getBoolean(KEY_REPLY_PRIVATE, false)
 
-        Log.d(TAG, "Comparando - Entrante: $normalizedIncoming, Objetivo: $normalizedTarget")
+        // Obtener número entrante
+        val incomingNumber = getIncomingNumber(intent)
 
-        // Verificar coincidencia
-        if (numbersMatch(normalizedIncoming, normalizedTarget)) {
-            Log.i(TAG, "¡Número coincide! Iniciando envío de SMS automático")
+        if (incomingNumber.isNullOrBlank()) {
+            Log.w(TAG, "No se pudo obtener el número entrante (Llamada privada o restricción de Android 10+).")
+            if (replyToPrivate) {
+                Log.i(TAG, "Configurado para responder a llamadas privadas, pero sin número no se puede enviar SMS.")
+            }
+            return
+        }
+
+        Log.d(TAG, "Llamada entrante de: $incomingNumber")
+        Log.d(TAG, "Modo de respuesta: $responseMode")
+
+        val shouldReply = when (responseMode) {
+            MODE_ALL -> {
+                Log.d(TAG, "Modo: Responder a TODOS")
+                true
+            }
+            MODE_CONTACTS_ONLY -> {
+                val isContact = isContactSaved(context, incomingNumber)
+                Log.d(TAG, "Modo: Solo contactos. ¿Es contacto? $isContact")
+                isContact
+            }
+            MODE_UNKNOWN_ONLY -> {
+                val isContact = isContactSaved(context, incomingNumber)
+                Log.d(TAG, "Modo: Solo desconocidos. ¿Es contacto? $isContact")
+                !isContact
+            }
+            MODE_SPECIFIC_NUMBERS -> {
+                val targetNumbers = getTargetNumbers(prefs)
+                val matches = targetNumbers.any { numbersMatch(normalizePhoneNumber(incomingNumber), normalizePhoneNumber(it)) }
+                Log.d(TAG, "Modo: Números específicos. Lista: $targetNumbers. ¿Coincide? $matches")
+                matches
+            }
+            else -> {
+                Log.w(TAG, "Modo desconocido: $responseMode, usando SPECIFIC_NUMBERS")
+                val targetNumbers = getTargetNumbers(prefs)
+                targetNumbers.any { numbersMatch(normalizePhoneNumber(incomingNumber), normalizePhoneNumber(it)) }
+            }
+        }
+
+        if (shouldReply) {
+            Log.i(TAG, "¡Condición cumplida! Iniciando envío de SMS automático a $incomingNumber")
             startSmsService(context, incomingNumber, autoReplyMessage)
         } else {
-            Log.d(TAG, "El número entrante no coincide con el configurado")
+            Log.d(TAG, "La llamada no cumple con el filtro configurado. No se enviará SMS.")
+        }
+    }
+
+    /**
+     * Lee la lista de números específicos desde SharedPreferences (almacenados como JSON array).
+     */
+    private fun getTargetNumbers(prefs: android.content.SharedPreferences): List<String> {
+        val json = prefs.getString(KEY_TARGET_NUMBERS, "[]") ?: "[]"
+        return try {
+            val jsonArray = JSONArray(json)
+            (0 until jsonArray.length()).map { jsonArray.getString(it) }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error al parsear target_numbers: ${e.message}")
+            // Fallback: intentar leer el formato antiguo (un solo número)
+            val singleNumber = prefs.getString("target_number", "")
+            if (!singleNumber.isNullOrBlank()) listOf(singleNumber) else emptyList()
+        }
+    }
+
+    /**
+     * Verifica si un número de teléfono está guardado en los contactos del dispositivo.
+     */
+    private fun isContactSaved(context: Context, phoneNumber: String): Boolean {
+        try {
+            if (context.checkSelfPermission(android.Manifest.permission.READ_CONTACTS)
+                != PackageManager.PERMISSION_GRANTED) {
+                Log.w(TAG, "No se tiene permiso READ_CONTACTS")
+                return false
+            }
+
+            val uri = Uri.withAppendedPath(
+                ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+                Uri.encode(phoneNumber)
+            )
+
+            val cursor: Cursor? = context.contentResolver.query(
+                uri,
+                arrayOf(ContactsContract.PhoneLookup._ID),
+                null,
+                null,
+                null
+            )
+
+            val exists = cursor?.use { it.moveToFirst() } ?: false
+            Log.d(TAG, "Número $phoneNumber ${if (exists) "es" else "NO es"} un contacto guardado")
+            return exists
+        } catch (e: Exception) {
+            Log.e(TAG, "Error al verificar contacto: ${e.message}")
+            return false
         }
     }
 
     /**
      * Extrae el número de teléfono entrante del intent.
-     * En Android 10+ (API 29+), se requiere READ_CALL_LOG para obtener el número.
      */
     private fun getIncomingNumber(intent: Intent): String? {
         var number = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER)
 
-        // Si no se obtiene el número directamente, intentar obtenerlo de otras formas
-        // Esto puede variar según la versión de Android y el fabricante
         if (number.isNullOrBlank()) {
-            // En algunos dispositivos, el número puede venir en otros extras
             number = intent.getStringExtra("incoming_number")
         }
 
@@ -139,15 +221,12 @@ class PhoneCallReceiver : BroadcastReceiver() {
 
     /**
      * Compara dos números de teléfono normalizados
-     * Permite coincidencia parcial (últimos dígitos) para mayor flexibilidad
      */
     private fun numbersMatch(number1: String, number2: String): Boolean {
         if (number1 == number2) return true
 
-        // Si uno contiene al otro (para manejar prefijos de país)
         val minLength = minOf(number1.length, number2.length)
         if (minLength >= 10) {
-            // Comparar los últimos 10 dígitos (número sin prefijo de país)
             val end1 = number1.takeLast(10)
             val end2 = number2.takeLast(10)
             return end1 == end2
